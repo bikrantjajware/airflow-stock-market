@@ -1,5 +1,20 @@
 from airflow.sdk.bases.hook import BaseHook
 from minio import Minio
+from airflow.exceptions import AirflowNotFoundException
+
+BUCKET_NAME = 'stock-market'
+
+
+def _get_minio_client():
+    minio = BaseHook.get_connection('minio')
+    print('minio extra', minio.extra_dejson)
+    client = Minio(
+            endpoint=minio.extra_dejson['endpoint'].split('//')[1],
+            access_key=minio.login,
+            secret_key=minio.password,
+            secure=False
+            )
+    return client
 
 
 def _get_stock_prices(url, symbol):
@@ -19,26 +34,29 @@ def _store_stock_prices(stock):
     from io import BytesIO
 
     stock = json.loads(stock)
-    bucket_name = 'stock-market'
-    minio = BaseHook.get_connection('minio')
-    print('minio extra', minio.extra_dejson)
-    client = Minio(
-        endpoint=minio.extra_dejson['endpoint'].split('//')[1],
-        access_key=minio.login,
-        secret_key=minio.password,
-        secure=False
-        )
+    client = _get_minio_client()
 
-    if not client.bucket_exists(bucket_name=bucket_name):
-        client.make_bucket(bucket_name=bucket_name)
+    if not client.bucket_exists(bucket_name=BUCKET_NAME):
+        client.make_bucket(bucket_name=BUCKET_NAME)
     symbol = stock['meta']['symbol']
     data = json.dumps(stock, ensure_ascii=False).encode('utf8')
     objw = client.put_object(
-        bucket_name=bucket_name,
+        bucket_name=BUCKET_NAME,
         object_name= f'{symbol}/prices.json',
         data=BytesIO(data),
         length=len(data)
         )
-    return f'{bucket_name}/{symbol}'
+    return f'{BUCKET_NAME}/{symbol}'
 
+
+
+def _get_formatted_csv(path):
+
+    client = _get_minio_client()
+    dir_path = f'{path.split('/')[1]}/formatted_prices/'
+    objects = client.list_objects(bucket_name=BUCKET_NAME,prefix=dir_path, recursive=True)
+    for obj in objects:
+        if obj.object_name.endswith('csv'):
+            return obj.object_name
+    return AirflowNotFoundException(f'The csv does not exist at path {dir_path}')
 
