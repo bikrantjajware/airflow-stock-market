@@ -1,6 +1,11 @@
 from airflow.sdk.bases.hook import BaseHook
 from minio import Minio
 from airflow.exceptions import AirflowNotFoundException
+import boto3
+import pandas as pd
+from sqlalchemy import create_engine
+
+
 
 BUCKET_NAME = 'stock-market'
 
@@ -60,3 +65,35 @@ def _get_formatted_csv(path):
             return obj.object_name
     return AirflowNotFoundException(f'The csv does not exist at path {dir_path}')
 
+
+
+def _load_to_dw(filename):
+    minio = _get_minio_client()
+    postgres = BaseHook.get_connection('postgres')
+
+    obj = minio.get_object(
+        bucket_name=BUCKET_NAME,
+        object_name=filename
+    )
+    
+
+    try:
+        df = pd.read_csv(obj)
+        engine = create_engine(postgres.get_uri())
+        
+        df.to_sql(
+            name='stock_market',
+            con=engine,
+            schema='public',
+            if_exists='append',
+            index=False
+        )
+    except Exception as e:
+        print('failed to read csv and load data in postgres', e)
+    finally:
+        obj.close()
+        obj.release_conn()
+
+    
+
+    
