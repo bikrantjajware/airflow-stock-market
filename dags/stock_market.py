@@ -3,7 +3,7 @@ from airflow.sdk.bases.hook import BaseHook
 from airflow.sdk.bases.sensor import PokeReturnValue
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.providers.docker.operators.docker import DockerOperator
-
+from airflow.providers.discord.notifications.discord import DiscordNotifier
 
 from datetime import datetime
 
@@ -16,7 +16,19 @@ SYMBOL = 'NVDA'
         start_date=datetime(2026,1,1),
         schedule='@daily',
         catchup=False,
-        tags=['stock_market']
+        tags=['stock_market'],
+        on_success_callback=DiscordNotifier(
+                discord_conn_id= 'discord_alert',
+                text='stock_market Dag run is successful',
+                username='',
+                tts=True
+        ),
+        on_failure_callback=DiscordNotifier(
+                discord_conn_id= 'discord_alert',
+                text='stock_market Dag run has failed',
+                username='',
+                tts=True
+        )
 )
 def stock_market():
         
@@ -78,6 +90,7 @@ def stock_market():
                 op_kwargs={ 'filename': '{{ ti.xcom_pull(task_ids="get_formatted_csv") }}' }
         )
 
+        #archived operator, issue running the operator, caused conflict of numpy/python/airflow versions
         # load_to_dw = aql.load_file(
         #         task_id='load_to_dw',
         #         input_file=File(
@@ -97,10 +110,8 @@ def stock_market():
         # )
 
 
-
+        is_finance_api_available() >> get_stock_prices >> store_stock_prices >> format_prices >> get_formatted_csv >> load_to_dw
         
-        is_finance_api_available() >> get_stock_prices >> store_stock_prices >> format_prices >> get_formatted_csv \
-        >> load_to_dw
 
 
 
