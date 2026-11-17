@@ -75,11 +75,11 @@ def _load_to_dw(filename):
         bucket_name=BUCKET_NAME,
         object_name=filename
     )
-    
+
 
     try:
         df = pd.read_csv(obj)
-        engine = create_engine(postgres.get_uri())
+        engine = create_engine(postgres.host)
         
         df.to_sql(
             name='stock_market',
